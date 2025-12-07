@@ -1,5 +1,7 @@
 {
   "actorSpecification": 1,
+  "title": "Dubizzle Jobs Dataset",
+  "description": "Structured dataset containing job listings scraped from Dubizzle UAE with complete job details, company information, and location data.",
   "fields": {
     "title": {
       "type": "string",
