@@ -3,7 +3,7 @@
   "title": "Dubizzle Jobs Dataset",
   "description": "Structured dataset containing job listings scraped from Dubizzle UAE with complete job details, company information, and location data.",
   "fields": {
-    "title": {
+    "job_title": {
       "type": "string",
       "nullable": true,
       "title": "Job Title",
@@ -69,7 +69,7 @@
       "title": "Overview",
       "transformation": {
         "fields": [
-          "title",
+          "job_title",
           "company",
           "location",
           "salary",
@@ -82,7 +82,7 @@
       "display": {
         "component": "table",
         "properties": {
-          "title": {
+          "job_title": {
             "label": "Job Title",
             "format": "text"
           },
@@ -121,7 +121,7 @@
       "title": "Detailed View",
       "transformation": {
         "fields": [
-          "title",
+          "job_title",
           "company",
           "location",
           "salary",
@@ -135,7 +135,7 @@
       "display": {
         "component": "table",
         "properties": {
-          "title": {
+          "job_title": {
             "label": "Job Title",
             "format": "text"
           },

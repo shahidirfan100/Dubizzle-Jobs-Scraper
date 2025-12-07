@@ -185,7 +185,7 @@ async function main() {
                                 await enqueueLinks({ urls: [jobUrl], userData: { label: 'DETAIL' } });
                             } else {
                                 const item = {
-                                    title: job.title || null,
+                                    job_title: job.title || null,
                                     company: job.contactName || job.agentName || null,
                                     category: job.categoryName || category || null,
                                     location: job.location?.join(', ') || emirate || null,
@@ -229,7 +229,7 @@ async function main() {
                         if (!data.job_type) data.job_type = $('[class*="job-type"], [class*="employment"]').first().text().trim() || null;
 
                         const item = {
-                            title: data.title || null,
+                            job_title: data.title || null,
                             company: data.company || null,
                             category: category || null,
                             location: data.location || null,
