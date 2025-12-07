@@ -1,0 +1,76 @@
+{
+  "title": "Dubizzle Jobs Scraper",
+  "description": "Extract job listings from Dubizzle UAE using intelligent JSON API and HTML parsing. Search by keywords, categories, or specific URLs across all Emirates.",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "startUrl": {
+      "title": "Start URL",
+      "type": "string",
+      "description": "Start scraping from a specific Dubizzle jobs URL. If provided, this overrides keyword/category/emirate settings.",
+      "editor": "textfield",
+      "example": "https://dubai.dubizzle.com/jobs/"
+    },
+    "keyword": {
+      "title": "Search Keywords",
+      "type": "string",
+      "description": "Search for jobs by title, skills, or keywords (e.g., 'software engineer', 'sales manager', 'accountant').",
+      "editor": "textfield",
+      "prefill": "software engineer",
+      "example": "software engineer"
+    },
+    "emirate": {
+      "title": "Emirate",
+      "type": "string",
+      "description": "Select the UAE emirate to search in.",
+      "editor": "select",
+      "default": "dubai",
+      "enum": ["dubai", "abu-dhabi", "sharjah", "ajman", "ras-al-khaimah", "fujairah", "umm-al-quwain"],
+      "enumTitles": ["Dubai", "Abu Dhabi", "Sharjah", "Ajman", "Ras Al Khaimah", "Fujairah", "Umm Al Quwain"]
+    },
+    "category": {
+      "title": "Job Category",
+      "type": "string",
+      "description": "Filter by specific job category (e.g., 'technology', 'sales', 'marketing', 'finance').",
+      "editor": "textfield",
+      "example": "technology"
+    },
+    "collectDetails": {
+      "title": "Collect Full Job Details",
+      "type": "boolean",
+      "description": "Visit individual job pages to extract complete descriptions and additional information.",
+      "editor": "checkbox",
+      "default": true
+    },
+    "results_wanted": {
+      "title": "Maximum Results",
+      "type": "integer",
+      "description": "Maximum number of job listings to extract. Set higher values for comprehensive searches.",
+      "minimum": 1,
+      "maximum": 1000,
+      "default": 100,
+      "editor": "number"
+    },
+    "max_pages": {
+      "title": "Maximum Pages",
+      "type": "integer",
+      "description": "Safety limit for pagination. Prevents excessive crawling on large result sets.",
+      "minimum": 1,
+      "maximum": 100,
+      "editor": "number",
+      "default": 20
+    },
+    "proxyConfiguration": {
+      "title": "Proxy Configuration",
+      "type": "object",
+      "description": "Configure proxy settings. Residential proxies recommended for reliability on Dubizzle.",
+      "editor": "proxy",
+      "default": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"]
+      }
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}

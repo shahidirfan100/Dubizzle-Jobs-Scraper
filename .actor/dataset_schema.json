@@ -1,0 +1,176 @@
+{
+  "actorSpecification": 1,
+  "fields": {
+    "title": {
+      "type": "string",
+      "nullable": true,
+      "title": "Job Title",
+      "description": "The title or position name of the job listing"
+    },
+    "company": {
+      "type": "string",
+      "nullable": true,
+      "title": "Company Name",
+      "description": "Name of the hiring company or employer"
+    },
+    "category": {
+      "type": "string",
+      "nullable": true,
+      "title": "Job Category",
+      "description": "Category classification of the job"
+    },
+    "location": {
+      "type": "string",
+      "nullable": true,
+      "title": "Location",
+      "description": "Job location, typically an emirate or city in UAE"
+    },
+    "salary": {
+      "type": "string",
+      "nullable": true,
+      "title": "Salary Range",
+      "description": "Salary information if provided in the listing"
+    },
+    "job_type": {
+      "type": "string",
+      "nullable": true,
+      "title": "Employment Type",
+      "description": "Type of employment (full-time, part-time, contract, etc.)"
+    },
+    "date_posted": {
+      "type": "string",
+      "nullable": true,
+      "title": "Date Posted",
+      "description": "When the job was originally posted"
+    },
+    "description_html": {
+      "type": "string",
+      "nullable": true,
+      "title": "Description (HTML)",
+      "description": "Full job description in HTML format"
+    },
+    "description_text": {
+      "type": "string",
+      "nullable": true,
+      "title": "Description (Text)",
+      "description": "Plain text version of the job description"
+    },
+    "url": {
+      "type": "string",
+      "nullable": false,
+      "title": "Job URL",
+      "description": "Direct link to the job listing on Dubizzle"
+    }
+  },
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "transformation": {
+        "fields": [
+          "title",
+          "company",
+          "location",
+          "salary",
+          "job_type",
+          "category",
+          "date_posted",
+          "url"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "title": {
+            "label": "Job Title",
+            "format": "text"
+          },
+          "company": {
+            "label": "Company",
+            "format": "text"
+          },
+          "location": {
+            "label": "Location",
+            "format": "text"
+          },
+          "salary": {
+            "label": "Salary",
+            "format": "text"
+          },
+          "job_type": {
+            "label": "Type",
+            "format": "text"
+          },
+          "category": {
+            "label": "Category",
+            "format": "text"
+          },
+          "date_posted": {
+            "label": "Posted",
+            "format": "text"
+          },
+          "url": {
+            "label": "Link",
+            "format": "link"
+          }
+        }
+      }
+    },
+    "detailed": {
+      "title": "Detailed View",
+      "transformation": {
+        "fields": [
+          "title",
+          "company",
+          "location",
+          "salary",
+          "job_type",
+          "category",
+          "date_posted",
+          "description_text",
+          "url"
+        ]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "title": {
+            "label": "Job Title",
+            "format": "text"
+          },
+          "company": {
+            "label": "Company",
+            "format": "text"
+          },
+          "location": {
+            "label": "Location",
+            "format": "text"
+          },
+          "salary": {
+            "label": "Salary",
+            "format": "text"
+          },
+          "job_type": {
+            "label": "Type",
+            "format": "text"
+          },
+          "category": {
+            "label": "Category",
+            "format": "text"
+          },
+          "date_posted": {
+            "label": "Posted",
+            "format": "text"
+          },
+          "description_text": {
+            "label": "Description",
+            "format": "text"
+          },
+          "url": {
+            "label": "Link",
+            "format": "link"
+          }
+        }
+      }
+    }
+  }
+}

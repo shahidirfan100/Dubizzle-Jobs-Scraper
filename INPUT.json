@@ -1,0 +1,12 @@
+{
+  "keyword": "software engineer",
+  "emirate": "dubai",
+  "category": "",
+  "results_wanted": 50,
+  "max_pages": 5,
+  "collectDetails": true,
+  "proxyConfiguration": {
+    "useApifyProxy": true,
+    "apifyProxyGroups": ["RESIDENTIAL"]
+  }
+}
