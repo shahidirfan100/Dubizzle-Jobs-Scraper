@@ -15,6 +15,8 @@ This scraper extracts job postings from Dubizzle, the leading classifieds platfo
 ✅ **Pagination Handling** - Automatically navigates through multiple pages of results  
 ✅ **Structured Data** - Exports clean, organized data ready for analysis  
 ✅ **Rate Limit Protection** - Built-in proxy support and request throttling
+✅ **Sitemap-aware discovery** - Automatically looks for site sitemaps to seed the search queue
+✅ **Stealth headers & jitter** - Randomized User-Agent and small request jitter to reduce blocking
 
 ## Why Use This Scraper?
 
@@ -263,7 +265,8 @@ This scraper uses a sophisticated dual-extraction approach:
 2. **HTML Parsing** (Fallback)
    - Activated when API is unavailable
    - Extracts data from page markup
-   - Includes JSON-LD structured data parsing
+  - Includes JSON-LD structured data parsing
+  - Also supports sitemap discovery to seed initial search pages when available
    - Comprehensive selector coverage
 
 ### Data Quality

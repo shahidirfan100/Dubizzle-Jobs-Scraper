@@ -3,10 +3,6 @@ import { Actor, log } from 'apify';
 import { CheerioCrawler, Dataset } from 'crawlee';
 import { load as cheerioLoad } from 'cheerio';
 import { gotScraping } from 'got-scraping';
-
-// Single-entrypoint main
-await Actor.init();
-
 async function main() {
     try {
         const input = (await Actor.getInput()) || {};
@@ -56,31 +52,108 @@ async function main() {
 
         let saved = 0;
 
-        // Try to fetch jobs from Dubizzle API first
+        // If user didn't provide start URLs, try discovering sitemap entries for the site to seed the crawler
+        if (initial.length === 1 && initial[0] && /dubizzle\.com/.test(initial[0])) {
+            try {
+                const sitemapUrls = await fetchSitemapUrls(new URL(initial[0]).origin);
+                // add discovered sitemap urls at the front so they are processed first
+                if (sitemapUrls && sitemapUrls.length) {
+                    // only include unique ones that look like jobs search pages
+                    for (const s of sitemapUrls) if (!initial.includes(s)) initial.unshift(s);
+                }
+            } catch (e) { log.debug('Sitemap discovery failed, continuing with default start URL'); }
+        }
+
+        // Try to fetch jobs from Dubizzle API first (robust)
         async function fetchJobsFromAPI(searchUrl, page = 1) {
             try {
                 const apiUrl = new URL(searchUrl);
                 apiUrl.searchParams.set('page', page.toString());
-                
+
+                // Request as text first — some endpoints return HTML wrapped React data
+                const userAgent = getRandomUserAgent();
                 const response = await gotScraping({
                     url: apiUrl.href,
-                    responseType: 'json',
+                    responseType: 'text',
                     headers: {
                         'Accept': 'application/json',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'User-Agent': userAgent,
+                        'Accept-Language': 'en-US,en;q=0.9',
                     },
                     proxyUrl: proxyConf ? await proxyConf.newUrl() : undefined,
                 });
 
-                return response.body;
+                // Try to parse JSON straight from response, or fall back to extracting embedded JSON
+                let body = response.body;
+                if (typeof body === 'string') {
+                    try { body = JSON.parse(body); } catch (e) { /* not plain JSON, continue */ }
+                }
+
+                // Return the parsed JSON object or raw text — caller will handle multiple shapes
+                return body;
             } catch (err) {
                 log.warning(`API fetch failed: ${err.message}`);
                 return null;
             }
         }
 
-        function extractFromJsonLd($) {
+        // Try to find embedded JSON data from HTML (Next.js / window.__NEXT_DATA__ / inline data)
+        function parseEmbeddedJsonFromHtml($) {
+            // Look for Next.js data
+            const nextDataScript = $('#__NEXT_DATA__, script#__NEXT_DATA__, script[type="application/json"]').filter((_, el) => ($(el).html() || '').includes('searchResult') || ($(el).html() || '').includes('listings')).first();
+            if (nextDataScript && nextDataScript.length) {
+                try {
+                    const json = JSON.parse(nextDataScript.html());
+                    // Try several common paths
+                    return json?.props?.pageProps || json?.props || json || null;
+                } catch (err) { /* ignore */ }
+            }
+
+            // Search for any inline scripts containing "listings" or "searchResult"
+            const scripts = $('script');
+            for (let i = 0; i < scripts.length; i++) {
+                const content = $(scripts[i]).html() || '';
+                if (/listings|searchResult|window\.__INITIAL_STATE__/i.test(content)) {
+                    try {
+                        // attempt to extract JSON object inside the script
+                        const m = content.match(/(\{\s*"?searchResult"?[\s\S]*\})/i) || content.match(/(\{[\s\S]*"?listings"?[\s\S]*\})/i);
+                        if (m && m[0]) {
+                            const parsed = JSON.parse(m[0]);
+                            return parsed;
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+            }
+
+            return null;
+        }
+
+        // Normalize various possible API shapes into a simple array of job objects
+        function normalizeListings(apiBody) {
+            if (!apiBody) return [];
+
+            // Common variants we handle:
+            // - { props: { pageProps: { searchResult: { listings: [...] } } } }
+            // - { searchResult: { listings: [...] } }
+            // - { data: { listings: [...] } }
+            // - { hits: [...] }, { results: [...] }
+
+            if (apiBody.props?.pageProps?.searchResult?.listings) return apiBody.props.pageProps.searchResult.listings;
+            if (apiBody.searchResult?.listings) return apiBody.searchResult.listings;
+            if (apiBody.data?.listings) return apiBody.data.listings;
+            if (Array.isArray(apiBody.listings)) return apiBody.listings;
+            if (Array.isArray(apiBody.hits)) return apiBody.hits;
+            if (Array.isArray(apiBody.results)) return apiBody.results;
+
+            // If the object itself contains objects with a common 'id' or 'title', extract those
+            if (apiBody.items && Array.isArray(apiBody.items)) return apiBody.items;
+
+            return [];
+        }
+
+        function extractFromJsonLd($, firstOnly = true) {
             const scripts = $('script[type="application/ld+json"]');
+            const found = [];
             for (let i = 0; i < scripts.length; i++) {
                 try {
                     const parsed = JSON.parse($(scripts[i]).html() || '');
@@ -89,7 +162,8 @@ async function main() {
                         if (!e) continue;
                         const t = e['@type'] || e.type;
                         if (t === 'JobPosting' || (Array.isArray(t) && t.includes('JobPosting'))) {
-                            return {
+                            // Return the first JobPosting we find — but keep it flexible
+                            const out = {
                                 title: e.title || e.name || null,
                                 company: e.hiringOrganization?.name || null,
                                 date_posted: e.datePosted || null,
@@ -98,32 +172,70 @@ async function main() {
                                 salary: e.baseSalary?.value || e.baseSalary?.minValue || null,
                                 job_type: e.employmentType || null,
                             };
+
+                            if (firstOnly) return out;
+                            found.push(out);
                         }
                     }
                 } catch (e) { /* ignore parsing errors */ }
             }
+            // If no JSON-LD found return either first or array
+            if (found.length) return found;
             return null;
+        }
+
+        // --- Stealth helpers ---
+        const USER_AGENTS = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
+        ];
+
+        function getRandomUserAgent() {
+            return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
         }
 
         function findJobLinks($, base) {
             const links = new Set();
+
+            // Common patterns: anchors with /jobs/ in href, anchors inside listing cards, data-href attributes
+            // Check anchors
             $('a[href]').each((_, a) => {
                 const href = $(a).attr('href');
                 if (!href) return;
-                // Dubizzle job URLs typically contain /jobs/ and end with numbers
-                if (/\/jobs\/.*\/\d+/i.test(href) || href.includes('job')) {
+                // Accept candidates containing /jobs/ or /job or 'listing' keywords
+                if (/\/jobs\//i.test(href) || /\/job\//i.test(href) || /listing|ad\//i.test(href)) {
                     const abs = toAbs(href, base);
-                    if (abs && !abs.includes('/search') && abs.includes('/jobs/')) {
-                        links.add(abs);
-                    }
+                    if (abs && !abs.includes('/search')) links.add(abs);
                 }
             });
+
+            // Check elements with data-href / data-url attributes (listing cards)
+            $('[data-href], [data-url]').each((_, el) => {
+                const href = $(el).attr('data-href') || $(el).attr('data-url');
+                if (!href) return;
+                const abs = toAbs(href, base);
+                if (abs && !abs.includes('/search')) links.add(abs);
+            });
+
+            // Check <article> or card elements that contain link children
+            $('article, .listing, .card').each((_, el) => {
+                const a = $(el).find('a[href]').first();
+                if (a && a.length) {
+                    const href = a.attr('href');
+                    const abs = toAbs(href, base);
+                    if (abs && !abs.includes('/search')) links.add(abs);
+                }
+            });
+
             return [...links];
         }
 
         function findNextPage($, base, currentPage = 1) {
             // Look for pagination links
-            const nextLink = $('a[aria-label*="next" i], a.next, button[aria-label*="next" i]').attr('href');
+            const nextLink = $('a[rel="next"], a[aria-label*="next" i], a.next, button[aria-label*="next" i]').attr('href')
+                || $('a').filter((_, el) => /page=\d+/i.test($(el).attr('href') || '') && /next|›|»|>/.test($(el).text())).first().attr('href');
             if (nextLink) return toAbs(nextLink, base);
             
             // Try to construct next page URL
@@ -132,13 +244,41 @@ async function main() {
             return urlObj.href;
         }
 
+        // Try sitemap discovery for job URLs — returns array of URLs found in sitemap
+        async function fetchSitemapUrls(rootDomain) {
+            try {
+                const candidates = ['/sitemap.xml', '/sitemap-index.xml', '/sitemap_jobs.xml', '/sitemap-pages.xml'];
+                const found = new Set();
+                for (const p of candidates) {
+                    try {
+                        const url = new URL(p, rootDomain).href;
+                        const res = await gotScraping({ url, responseType: 'text', proxyUrl: proxyConf ? await proxyConf.newUrl() : undefined });
+                        const xml = res.body || '';
+                        const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/gi)].map(m => m[1]);
+                        for (const l of locs) if (/\/jobs\//i.test(l)) found.add(l);
+                    } catch (err) { /* skip failures */ }
+                }
+                return [...found];
+            } catch (err) {
+                log.debug(`Sitemap fetch failed: ${err.message}`);
+                return [];
+            }
+        }
+
         const crawler = new CheerioCrawler({
             proxyConfiguration: proxyConf,
             maxRequestRetries: 3,
+            failedRequestHandler: async ({ request, error }) => {
+                log.warning(`Request ${request.url} failed too many times: ${error?.message || error}`);
+                // Keep a small record to dataset for investigation
+                try { await Dataset.pushData({ error: String(error?.message || error), url: request.url, userData: request.userData }); } catch (e) { /* ignore */ }
+            },
             useSessionPool: true,
             maxConcurrency: 5,
             requestHandlerTimeoutSecs: 90,
             async requestHandler({ request, $, enqueueLinks, log: crawlerLog }) {
+                // Small random delay to reduce fingerprinting and throttling
+                await new Promise((r) => setTimeout(r, 100 + Math.floor(Math.random() * 800)));
                 const label = request.userData?.label || 'LIST';
                 const pageNo = request.userData?.pageNo || 1;
 
@@ -148,14 +288,35 @@ async function main() {
                     // Try API first if enabled
                     if (useApiFirst) {
                         const apiData = await fetchJobsFromAPI(request.url, pageNo);
-                        if (apiData && apiData.props?.pageProps?.searchResult?.listings) {
-                            jobsData = apiData.props.pageProps.searchResult.listings;
-                            crawlerLog.info(`API: Found ${jobsData.length} jobs on page ${pageNo}`);
+                        // If we got an API body, try to normalize it into listings
+                        if (apiData) {
+                            // normalize various shapes
+                            const normalized = normalizeListings(apiData);
+                            if (normalized && normalized.length) {
+                                jobsData = normalized;
+                                crawlerLog.info(`API: Found ${jobsData.length} jobs on page ${pageNo}`);
+                            } else {
+                                // Try extracting embedded JSON from original page HTML as a last attempt
+                                const embedded = parseEmbeddedJsonFromHtml($);
+                                const eNorm = normalizeListings(embedded);
+                                if (eNorm && eNorm.length) {
+                                    jobsData = eNorm;
+                                    crawlerLog.info(`EMBED: Found ${jobsData.length} listings embedded in page HTML on page ${pageNo}`);
+                                }
+                            }
                         }
                     }
 
                     // Fallback to HTML parsing if API didn't work
                     if (jobsData.length === 0) {
+                        // Try JSON-LD listing embedded in page (many sites include lists)
+                        const embeddedPosts = extractFromJsonLd($, false);
+                        if (Array.isArray(embeddedPosts) && embeddedPosts.length) {
+                            jobsData = embeddedPosts;
+                            crawlerLog.info(`JSON-LD: Found ${jobsData.length} JobPosting entries on page ${pageNo}`);
+                        }
+
+                        // If still nothing, continue with anchor-based HTML parsing
                         const links = findJobLinks($, request.url);
                         crawlerLog.info(`HTML: Found ${links.length} job links on page ${pageNo}`);
 
