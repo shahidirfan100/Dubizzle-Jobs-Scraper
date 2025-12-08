@@ -283,6 +283,8 @@ async function main() {
                 const label = request.userData?.label || 'LIST';
                 const pageNo = request.userData?.pageNo || 1;
 
+                // Wait for page to be fully loaded
+                await page.waitForLoadState('networkidle');
                 const html = await page.content();
                 const $ = cheerioLoad(html);
 
