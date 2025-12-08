@@ -1,9 +1,10 @@
 // Dubizzle Jobs scraper - JSON API + HTML fallback implementation
 import { Actor, log } from 'apify';
-import { CheerioCrawler, Dataset } from 'crawlee';
+import { PlaywrightCrawler, Dataset } from 'crawlee';
 import { load as cheerioLoad } from 'cheerio';
 import { gotScraping } from 'got-scraping';
 async function main() {
+    await Actor.init();
     try {
         const input = (await Actor.getInput()) || {};
         const {
@@ -265,7 +266,7 @@ async function main() {
             }
         }
 
-        const crawler = new CheerioCrawler({
+        const crawler = new PlaywrightCrawler({
             proxyConfiguration: proxyConf,
             maxRequestRetries: 3,
             failedRequestHandler: async ({ request, error }) => {
@@ -276,11 +277,14 @@ async function main() {
             useSessionPool: true,
             maxConcurrency: 5,
             requestHandlerTimeoutSecs: 90,
-            async requestHandler({ request, $, enqueueLinks, log: crawlerLog }) {
+            async requestHandler({ request, page, enqueueLinks, log: crawlerLog }) {
                 // Small random delay to reduce fingerprinting and throttling
                 await new Promise((r) => setTimeout(r, 100 + Math.floor(Math.random() * 800)));
                 const label = request.userData?.label || 'LIST';
                 const pageNo = request.userData?.pageNo || 1;
+
+                const html = await page.content();
+                const $ = cheerioLoad(html);
 
                 if (label === 'LIST') {
                     let jobsData = [];
