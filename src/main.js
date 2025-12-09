@@ -100,42 +100,68 @@ async function main() {
             return found.length ? found : null;
         }
 
-        // Find job links from HTML
-        function findJobLinks($, baseUrl) {
+        // Find job links from HTML - Enhanced with debugging
+        function findJobLinks($, baseUrl, crawlerLog) {
             const links = new Set();
 
-            // Look for job listing links
-            $('a[href*="/jobs/"]').each((_, el) => {
-                const href = $(el).attr('href');
-                if (!href || href.includes('/search') || href.includes('?page=')) return;
+            // DEBUG: Log total links on page
+            const totalLinks = $('a[href]').length;
+            if (crawlerLog) crawlerLog.info(`Total links found on page: ${totalLinks}`);
 
-                // Only get actual job postings with IDs
-                if (/\/jobs\/[^/]+\/\d+/.test(href) || /\/jobs\/\d+/.test(href)) {
+            // Strategy 1: ANY link containing /jobs/ (broad approach)
+            $('a[href]').each((_, el) => {
+                const href = $(el).attr('href');
+                if (!href) return;
+
+                // Skip pagination and search pages, but accept most /jobs/ links
+                if (href.includes('?page=') || href === '/jobs/' || href === '/jobs') return;
+
+                // Accept ANY /jobs/ URL that's not just the base path
+                if (href.includes('/jobs/')) {
+                    const abs = toAbs(href, baseUrl);
+                    if (abs && abs !== baseUrl) {
+                        links.add(abs);
+                    }
+                }
+            });
+
+            if (crawlerLog) crawlerLog.info(`After strategy 1 (broad /jobs/ links): ${links.size} unique URLs`);
+
+            // Strategy 2: Data attributes
+            $('[data-testid], [data-href], [data-url]').each((_, el) => {
+                const href = $(el).attr('data-href') || $(el).attr('data-url') || $(el).find('a').first().attr('href');
+                if (href && href.includes('/jobs/')) {
                     const abs = toAbs(href, baseUrl);
                     if (abs) links.add(abs);
                 }
             });
 
-            // Check data attributes
-            $('[data-testid*="listing"], [data-testid*="job"], [data-href]').each((_, el) => {
-                const href = $(el).attr('data-href') || $(el).find('a').first().attr('href');
-                if (href && /\/jobs\//.test(href)) {
-                    const abs = toAbs(href, baseUrl);
-                    if (abs && !abs.includes('/search')) links.add(abs);
-                }
-            });
+            if (crawlerLog) crawlerLog.info(`After strategy 2 (data attributes): ${links.size} unique URLs`);
 
-            // Check card containers
-            $('article, [class*="listing"], [class*="card"]').each((_, el) => {
-                const link = $(el).find('a[href*="/jobs/"]').first();
+            // Strategy 3: Containers
+            $('article, li, div, [class*="listing"], [class*="card"], [class*="item"]').each((_, el) => {
+                const link = $(el).find('a[href]').first();
                 if (link.length) {
                     const href = link.attr('href');
-                    if (href && /\/jobs\/[^/]+\/\d+|\/jobs\/\d+/.test(href)) {
+                    if (href && href.includes('/jobs/')) {
                         const abs = toAbs(href, baseUrl);
                         if (abs) links.add(abs);
                     }
                 }
             });
+
+            if (crawlerLog) crawlerLog.info(`Total unique job URLs found: ${links.size}`);
+
+            // DEBUG: Show samples
+            if (links.size > 0 && crawlerLog) {
+                crawlerLog.info(`Sample URLs: ${JSON.stringify([...links].slice(0, 3))}`);
+            } else if (crawlerLog) {
+                crawlerLog.warning('⚠️  NO JOB URLs FOUND!');
+                // Log some hrefs for debugging
+                const someHrefs = [];
+                $('a[href]').slice(0, 20).each((_, el) => someHrefs.push($(el).attr('href')));
+                crawlerLog.debug(`Sample hrefs on page: ${JSON.stringify(someHrefs)}`);
+            }
 
             return [...links];
         }
@@ -244,7 +270,7 @@ async function main() {
                 const $ = cheerioLoad(html);
 
                 // Extract all job URLs
-                const jobUrls = findJobLinks($, request.url);
+                const jobUrls = findJobLinks($, request.url, crawlerLog);
                 crawlerLog.info(`✓ Found ${jobUrls.length} job URLs from page ${pageNo}`);
 
                 // Add to queue for CheerioCrawler
@@ -268,7 +294,7 @@ async function main() {
                         // Recursively process next page in same browser session
                         const nextHtml = await page.content();
                         const next$ = cheerioLoad(nextHtml);
-                        const nextJobs = findJobLinks(next$, nextUrl.href);
+                        const nextJobs = findJobLinks(next$, nextUrl.href, crawlerLog);
 
                         if (nextJobs.length > 0) {
                             crawlerLog.info(`✓ Found ${nextJobs.length} jobs from page ${pageNo + 1}`);
